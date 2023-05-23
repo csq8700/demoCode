@@ -1,0 +1,38 @@
+Sub FillWorksheetsFromSubfolders()
+    Dim mainFolderPath As String
+    Dim mainFolder As Object
+    Dim subFolder As Object
+    Dim file As Object
+    Dim ws As Worksheet
+    Dim fso As Object
+    Dim textFile As Object
+    Dim fileContent As String
+    
+    ' 设置主目录路径
+    mainFolderPath = "C:\YourMainFolderPath"
+    
+    ' 创建主目录对象
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set mainFolder = fso.GetFolder(mainFolderPath)
+    
+    ' 遍历主目录下的子目录
+    For Each subFolder In mainFolder.SubFolders
+        ' 创建对应子目录的工作表
+        Set ws = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        ws.Name = subFolder.Name
+        
+        ' 遍历子目录下的文件
+        For Each file In subFolder.Files
+            ' 打开文件
+            Set textFile = fso.OpenTextFile(file.Path, 1, False)
+            fileContent = textFile.ReadAll
+            textFile.Close
+            
+            ' 填充文件内容到工作表
+            Dim contentArray As Variant
+            contentArray = Split(fileContent, vbNewLine)
+            
+            ws.Cells(ws.Rows.Count, 1).End(xlUp).Offset(1, 0).Resize(UBound(contentArray) + 1, 1).Value = WorksheetFunction.Transpose(contentArray)
+        Next file
+    Next subFolder
+End Sub
