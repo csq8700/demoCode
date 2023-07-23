@@ -1,38 +1,94 @@
-Sub FillWorksheetsFromSubfolders()
-    Dim mainFolderPath As String
-    Dim mainFolder As Object
-    Dim subFolder As Object
-    Dim file As Object
+Sub ImportTextFileAndSortData()
     Dim ws As Worksheet
-    Dim fso As Object
-    Dim textFile As Object
-    Dim fileContent As String
-    
-    ' 设置主目录路径
-    mainFolderPath = "C:\YourMainFolderPath"
-    
-    ' 创建主目录对象
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    Set mainFolder = fso.GetFolder(mainFolderPath)
-    
-    ' 遍历主目录下的子目录
-    For Each subFolder In mainFolder.SubFolders
-        ' 创建对应子目录的工作表
-        Set ws = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
-        ws.Name = subFolder.Name
-        
-        ' 遍历子目录下的文件
-        For Each file In subFolder.Files
-            ' 打开文件
-            Set textFile = fso.OpenTextFile(file.Path, 1, False)
-            fileContent = textFile.ReadAll
-            textFile.Close
-            
-            ' 填充文件内容到工作表
-            Dim contentArray As Variant
-            contentArray = Split(fileContent, vbNewLine)
-            
-            ws.Cells(ws.Rows.Count, 1).End(xlUp).Offset(1, 0).Resize(UBound(contentArray) + 1, 1).Value = WorksheetFunction.Transpose(contentArray)
-        Next file
-    Next subFolder
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' 更改为您想要导入数据的工作表名称
+
+    ' 定义要导入的文本文件路径和文件名
+    Dim FilePath As String
+    FilePath = "C:\YourFilePath\example.txt" ' 更改为您实际的文本文件路径
+
+    ' 在工作表中创建新的查询表
+    Dim qt As QueryTable
+    Set qt = ws.QueryTables.Add(Connection:="TEXT;" & FilePath, Destination:=ws.Range("A1"))
+
+    ' 设置查询表属性
+    With qt
+        .Name = "TextFileQuery" ' 查询表的名称
+        .FieldNames = True ' 是否包含字段名称
+        .RowNumbers = False ' 是否包含行号
+        .TextFileStartRow = 1 ' 文本文件中数据开始行
+        .TextFileParseType = xlDelimited ' 文本文件解析类型
+        .TextFileTextQualifier = xlTextQualifierDoubleQuote ' 文本限定符
+        .TextFileConsecutiveDelimiter = False ' 处理连续分隔符
+        .TextFileCommaDelimiter = False ' 使用逗号作为分隔符
+        .TextFileTabDelimiter = False ' 使用 Tab 作为分隔符
+        .TextFileSemicolonDelimiter = False ' 使用分号作为分隔符
+        .TextFileSpaceDelimiter = True ' 使用空格作为分隔符
+
+        ' 将所有列设定为文本格式
+        Dim LastColumn As Long
+        LastColumn = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+        Dim ColumnDataTypesArray() As Variant
+        ReDim ColumnDataTypesArray(1 To LastColumn)
+        For i = 1 To LastColumn
+            ColumnDataTypesArray(i) = 2 ' 2 表示文本格式
+        Next i
+        .TextFileColumnDataTypes = ColumnDataTypesArray
+
+        .Refresh BackgroundQuery:=False ' 刷新查询表数据
+    End With
+
+    ' 将数据转换为表格格式
+    Dim LastRow As Long
+    LastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    ws.ListObjects.Add(xlSrcRange, ws.Range("A1").CurrentRegion, , xlYes).Name = "MyTable"
+
+    ' 筛选第一列的值为 1、3 和 5
+    ws.ListObjects("MyTable").Range.AutoFilter Field:=1, Criteria1:=Array(1, 3, 5), Operator:=xlFilterValues
+
+    ' 按第二列的年月进行排序
+    ws.ListObjects("MyTable").Sort.SortFields.Add Key:=Range("B2:B" & LastRow), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
+    With ws.ListObjects("MyTable").Sort
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+
+    ' 创建新的Excel文件并按年月分类新建工作表
+    Dim NewWorkbook As Workbook
+    Set NewWorkbook = Workbooks.Add
+    Dim LastRowFiltered As Long
+    LastRowFiltered = ws.ListObjects("MyTable").ListRows.Count
+
+    Dim LastYearMonth As String
+    Dim CurrentYearMonth As String
+    Dim NewSheet As Worksheet
+    Dim i As Long
+    Dim j As Long
+
+    For i = 1 To LastRowFiltered
+        CurrentYearMonth = ws.ListObjects("MyTable").ListColumns(2).DataBodyRange.Cells(i).Value
+        If CurrentYearMonth <> LastYearMonth Then
+            Set NewSheet = NewWorkbook.Sheets.Add(After:=NewWorkbook.Sheets(NewWorkbook.Sheets.Count))
+            NewSheet.Name = CurrentYearMonth
+            LastYearMonth = CurrentYearMonth
+            j = 1
+        End If
+        ws.ListObjects("MyTable").ListRows(i).Range.Copy NewSheet.Cells(j, 1)
+        j = j + 1
+    Next i
+
+    ' 删除原来的查询表和筛选结果表格
+    ws.ListObjects("MyTable").Unlist
+    qt.Delete
+
+    ' 调整列宽以适应内容
+    For Each NewSheet In NewWorkbook.Sheets
+        NewSheet.Cells.EntireColumn.AutoFit
+    Next NewSheet
+
+    ' 保存新的Excel文件
+    NewWorkbook.SaveAs "C:\YourFilePath\NewFile.xlsx" ' 更改为您想要保存的文件路径和文件名
+    NewWorkbook.Close
 End Sub
