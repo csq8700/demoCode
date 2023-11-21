@@ -1,0 +1,94 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace FileCopyWinFormsDemo
+{
+    public partial class Form1 : Form
+    {
+        private string copyListFilePath = "copylist.txt";
+        private string logFilePath = "copylog.txt";
+
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        private async void CopyButton_Click(object sender, EventArgs e)
+        {
+            string[] copyLines = File.ReadAllLines(copyListFilePath);
+
+            foreach (var line in copyLines)
+            {
+                string[] paths = line.Split(',');
+
+                if (paths.Length == 2)
+                {
+                    string sourcePath = paths[0].Trim();
+                    string destinationPath = paths[1].Trim();
+
+                    await LogToFile($"Copying from {sourcePath} to {destinationPath}");
+                    await LogToFile($"Start Time: {DateTime.Now}");
+                    await CopyFilesAsync(sourcePath, destinationPath);
+                    await LogToFile($"End Time: {DateTime.Now}");
+                    await LogToFile("--------------------------------------------------");
+                }
+            }
+
+            textBoxProgress.AppendText("File copying completed." + Environment.NewLine);
+        }
+
+        private async Task LogToFile(string logMessage)
+        {
+            using (StreamWriter logWriter = File.AppendText(logFilePath))
+            {
+                await logWriter.WriteLineAsync(logMessage);
+            }
+        }
+
+        private Task CopyFilesAsync(string sourcePath, string destinationPath)
+        {
+            return Task.Run(() =>
+            {
+                ProcessStartInfo processInfo = new ProcessStartInfo();
+                processInfo.FileName = "robocopy";
+                processInfo.Arguments = $"\"{sourcePath}\" \"{destinationPath}\" /E /Z /TEE";
+                processInfo.RedirectStandardOutput = true;
+                processInfo.UseShellExecute = false;
+                processInfo.CreateNoWindow = true;
+
+                Process process = new Process();
+                process.StartInfo = processInfo;
+                process.OutputDataReceived += (s, evt) =>
+                {
+                    if (!String.IsNullOrEmpty(evt.Data))
+                    {
+                        UpdateProgress(evt.Data);
+                    }
+                };
+
+                process.Start();
+                process.BeginOutputReadLine();
+
+                process.WaitForExit();
+            });
+        }
+
+        private void UpdateProgress(string message)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new MethodInvoker(delegate
+                {
+                    textBoxProgress.AppendText(message + Environment.NewLine);
+                }));
+            }
+            else
+            {
+                textBoxProgress.AppendText(message + Environment.NewLine);
+            }
+        }
+    }
+}
