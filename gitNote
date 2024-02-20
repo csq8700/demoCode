@@ -74,5 +74,10 @@ git reset --hard HEAD^
 他のブランチで行われた変更を現在のブランチに持ってくる
 git cherry-pick [commit]
 
+リモートブランチを削除
+git push origin --delete <branch-name>
+
+ローカルブランチを削除
+git branch -d <branch-name>
 
 
