@@ -1,0 +1,22 @@
+public static class SessionExtensions
+{
+    public static void RegenerateSessionId(this HttpSessionState session)
+    {
+        // 获取当前会话上下文
+        HttpApplication app = HttpContext.Current.ApplicationInstance;
+        HttpContext context = app.Context;
+        HttpSessionState oldSession = context.Session;
+
+        // 使用反射来获取 SessionStateModule 类型
+        var sessionStateModule = (SessionStateModule)context.ApplicationInstance.Modules["Session"];
+        var store = (ISessionStateStoreProvider)typeof(SessionStateModule)
+            .GetField("_store", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .GetValue(sessionStateModule);
+
+        // 生成新的会话 ID
+        string newSessionId = store.CreateSessionID(context);
+        store.Remove(context, oldSession.SessionID);
+        typeof(HttpSessionState).GetField("SessionID", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .SetValue(oldSession, newSessionId);
+    }
+}
