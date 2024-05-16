@@ -1,22 +1,37 @@
-public static class SessionExtensions
-{
-    public static void RegenerateSessionId(this HttpSessionState session)
-    {
-        // 获取当前会话上下文
-        HttpApplication app = HttpContext.Current.ApplicationInstance;
-        HttpContext context = app.Context;
-        HttpSessionState oldSession = context.Session;
+Imports System.Security.Cryptography
 
-        // 使用反射来获取 SessionStateModule 类型
-        var sessionStateModule = (SessionStateModule)context.ApplicationInstance.Modules["Session"];
-        var store = (ISessionStateStoreProvider)typeof(SessionStateModule)
-            .GetField("_store", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            .GetValue(sessionStateModule);
+Public Class SessionIdGenerator
+    Private Const SessionIdLength As Integer = 24 ' 24 characters
 
-        // 生成新的会话 ID
-        string newSessionId = store.CreateSessionID(context);
-        store.Remove(context, oldSession.SessionID);
-        typeof(HttpSessionState).GetField("SessionID", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            .SetValue(oldSession, newSessionId);
-    }
-}
+    Public Shared Function GenerateSessionId() As String
+        ' Create a byte array to hold the random data
+        Dim randomBytes(15) As Byte ' 16 bytes to get 24 base64 characters
+
+        ' Use RNGCryptoServiceProvider to generate cryptographically strong random bytes
+        Using rng As New RNGCryptoServiceProvider()
+            rng.GetBytes(randomBytes)
+        End Using
+
+        ' Convert the byte array to a base64 string
+        Dim sessionId As String = Convert.ToBase64String(randomBytes)
+
+        ' Replace URL-unsafe characters
+        sessionId = sessionId.Replace("+"c, "-"c).Replace("/"c, "_"c).TrimEnd("="c)
+
+        ' Ensure the length of the sessionId is 24 characters
+        If sessionId.Length > SessionIdLength Then
+            sessionId = sessionId.Substring(0, SessionIdLength)
+        ElseIf sessionId.Length < SessionIdLength Then
+            sessionId = sessionId.PadRight(SessionIdLength, "0"c)
+        End If
+
+        Return sessionId
+    End Function
+End Class
+
+Module Program
+    Sub Main()
+        Dim sessionId As String = SessionIdGenerator.GenerateSessionId()
+        Console.WriteLine($"Generated SessionID: {sessionId}")
+    End Sub
+End Module
