@@ -1,37 +1,67 @@
-Imports System.Security.Cryptography
+@echo off
+setlocal enabledelayedexpansion
 
-Public Class SessionIdGenerator
-    Private Const SessionIdLength As Integer = 24 ' 24 characters
+:: 获取输入参数
+set solutionDir=%1
 
-    Public Shared Function GenerateSessionId() As String
-        ' Create a byte array to hold the random data
-        Dim randomBytes(15) As Byte ' 16 bytes to get 24 base64 characters
+:: 去掉路径末尾的反斜杠
+if %solutionDir:~-1%==\ (
+    set "solutionDir=%solutionDir:~0,-1%"
+)
 
-        ' Use RNGCryptoServiceProvider to generate cryptographically strong random bytes
-        Using rng As New RNGCryptoServiceProvider()
-            rng.GetBytes(randomBytes)
-        End Using
+:: 分割路径
+set "arr="
+for %%i in ("%solutionDir:\=" "%") do (
+    set "arr=!arr! %%~i"
+)
+set "count=0"
+for %%i in (%arr%) do set /A count+=1
 
-        ' Convert the byte array to a base64 string
-        Dim sessionId As String = Convert.ToBase64String(randomBytes)
+:: 获取目录名
+for /F "tokens=%count%" %%i in ("%arr%") do set "gitPathName=%%i"
 
-        ' Replace URL-unsafe characters
-        sessionId = sessionId.Replace("+"c, "-"c).Replace("/"c, "_"c).TrimEnd("="c)
+:: 切换目录
+cd /d %solutionDir%
+cd ..
 
-        ' Ensure the length of the sessionId is 24 characters
-        If sessionId.Length > SessionIdLength Then
-            sessionId = sessionId.Substring(0, SessionIdLength)
-        ElseIf sessionId.Length < SessionIdLength Then
-            sessionId = sessionId.PadRight(SessionIdLength, "0"c)
-        End If
+:: 获取最后一次提交的时间
+for /f "tokens=*" %%i in ('git log -1 --format=^%%cd --date=format:"%%Y/%%m/%%d %%H:%%M:%%S" %gitPathName%') do set "modifiedDate=%%i"
 
-        Return sessionId
-    End Function
-End Class
+:: 获取所有提交的列表
+set "commitList="
+for /f "delims=" %%i in ('git rev-list --reverse --date-order --all HEAD') do set "commitList=!commitList! %%i"
 
-Module Program
-    Sub Main()
-        Dim sessionId As String = SessionIdGenerator.GenerateSessionId()
-        Console.WriteLine($"Generated SessionID: {sessionId}")
-    End Sub
-End Module
+:: 获取文件的最后一次提交
+for /f "tokens=*" %%i in ('git rev-list --max-count=1 HEAD -- %gitPathName%') do set "targetCommit=%%i"
+
+:: 查找最后一次提交的位置
+set "index=0"
+set "i=1"
+for %%i in (%commitList%) do (
+    if "%%i"=="%targetCommit%" (
+        set "index=!i!"
+        goto :breakloop
+    )
+    set /A i+=1
+)
+:breakloop
+
+:: 文件路径
+set "fileName=AssemblyInfo.cs"
+set "templateFileName=%fileName%.tmpl"
+
+:: 读取模板文件内容
+set "content="
+for /f "usebackq delims=" %%i in ("%solutionDir%\%templateFileName%") do (
+    set "content=!content!%%i
+"
+)
+
+:: 替换变量
+set "content=!content:’$WCDATE$’=%modifiedDate%!"
+set "content=!content:’$WCREV$’=%index%!"
+
+:: 写入文件
+echo !content! > "%solutionDir%\%fileName%"
+
+endlocal
