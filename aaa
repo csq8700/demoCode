@@ -14,8 +14,11 @@ function Test-WebServer {
     )
     try {
         $creds = New-Object System.Management.Automation.PSCredential ($username, (ConvertTo-SecureString $password -AsPlainText -Force))
-        $response = Invoke-WebRequest -Uri $url -Credential $creds -UseDefaultCredentials -Authentication NTLM -Method Head
-        if ($response.StatusCode -eq 200) {
+        $handler = New-Object System.Net.Http.HttpClientHandler
+        $handler.Credentials = $creds
+        $client = New-Object System.Net.Http.HttpClient($handler)
+        $response = $client.SendAsync((New-Object System.Net.Http.HttpRequestMessage 'Head' $url)).Result
+        if ($response.StatusCode -eq [System.Net.HttpStatusCode]::OK) {
             $message = "Web server is up and running."
             Write-Log -message $message -entryType "Information"
         } else {
@@ -39,8 +42,7 @@ function Test-DBServer {
     try {
         $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
         $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $username, $securePassword
-        $connectionString = "Server=$server;Database=$database;User Id=$username;Password=$password;"
-        $results = Invoke-Sqlcmd -ConnectionString $connectionString -Query $query
+        $results = Invoke-Sqlcmd -ServerInstance $server -Database $database -Query $query -Credential $cred
         if ($results) {
             $message = "Database query executed successfully."
             Write-Log -message $message -entryType "Information"
