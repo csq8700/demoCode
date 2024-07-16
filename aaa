@@ -1,0 +1,59 @@
+function Write-Log {
+    param (
+        [string]$message,
+        [string]$entryType = "Information"  # 默认为 Information，可以是 "Error", "Warning", "Information"
+    )
+    Write-EventLog -LogName "Application" -Source "ServerCheck" -EventId 1000 -EntryType $entryType -Message $message
+}
+
+function Test-WebServer {
+    param (
+        [string]$url,
+        [string]$username,
+        [string]$password
+    )
+    try {
+        $creds = New-Object System.Management.Automation.PSCredential ($username, (ConvertTo-SecureString $password -AsPlainText -Force))
+        $response = Invoke-WebRequest -Uri $url -Credential $creds -UseDefaultCredentials -Authentication NTLM -Method Head
+        if ($response.StatusCode -eq 200) {
+            $message = "Web server is up and running."
+            Write-Log -message $message -entryType "Information"
+        } else {
+            $message = "Web server returned status code $($response.StatusCode)."
+            Write-Log -message $message -entryType "Warning"
+        }
+    } catch {
+        $message = "Error accessing web server: $_"
+        Write-Log -message $message -entryType "Error"
+    }
+}
+
+function Test-DBServer {
+    param (
+        [string]$server,
+        [string]$database,
+        [string]$query,
+        [string]$username,
+        [string]$password
+    )
+    try {
+        $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+        $cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $username, $securePassword
+        $connectionString = "Server=$server;Database=$database;User Id=$username;Password=$password;"
+        $results = Invoke-Sqlcmd -ConnectionString $connectionString -Query $query
+        if ($results) {
+            $message = "Database query executed successfully."
+            Write-Log -message $message -entryType "Information"
+        } else {
+            $message = "Database query returned no results."
+            Write-Log -message $message -entryType "Warning"
+        }
+    } catch {
+        $message = "Error executing database query: $_"
+        Write-Log -message $message -entryType "Error"
+    }
+}
+
+# 示例调用
+Test-WebServer -url "http://example.com" -username "domain\user" -password "password"
+Test-DBServer -server "your_db_server" -database "your_db_name" -query "SELECT 1" -username "your_db_user" -password "your_db_password"
