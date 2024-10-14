@@ -1,121 +1,38 @@
-# 设置 Redmine 服务器配置
-$redmineUrl = "http://your-redmine-instance.com"
-$apiKey = "your_api_key"
+$xmlFile = "D:\Downloads\test.xml"
+# 生成用户名和密码（初次执行）
+$username = "your-username"
+$password = "bbbbb"
 
-# CSV 文件路径
-$csvFile = "C:\path\to\time_entries.csv"
+# 将明文密码转换为加密的 SecureString
+$securePassword = ConvertTo-SecureString $password -AsPlainText -Force
 
-# 读取 CSV 文件
-$entries = Import-Csv -Path $csvFile
+# 将 SecureString 密码加密并转换为字符串
+$encryptedPassword = $securePassword | ConvertFrom-SecureString
 
-foreach ($entry in $entries) {
-    $payload = @{
-        "time_entry" = @{
-            "issue_id" = $entry.issue_id
-            "hours" = $entry.hours
-            "activity_id" = $entry.activity_id
-            "spent_on" = $entry.spent_on
-            "comments" = $entry.comments
-        }
-    }
+# 创建 XML 文档并保存用户名和加密后的密码
+$xml = New-Object System.Xml.XmlDocument
+$root = $xml.CreateElement("Credentials")
+$xml.AppendChild($root)
 
-    $jsonPayload = $payload | ConvertTo-Json
+$userNode = $xml.CreateElement("Username")
+$userNode.InnerText = $username
+$root.AppendChild($userNode)
 
-    $headers = @{
-        "X-Redmine-API-Key" = $apiKey
-        "Content-Type" = "application/json"
-    }
+$passNode = $xml.CreateElement("Password")
+$passNode.InnerText = $encryptedPassword
+$root.AppendChild($passNode)
 
-    # 发起 HTTP POST 请求
-    $response = Invoke-RestMethod -Uri "$redmineUrl/time_entries.json" -Method Post -Headers $headers -Body $jsonPayload
+# 保存到 XML 文件
+$xml.Save($xmlFile)
 
-    if ($response -eq $null) {
-        Write-Host "Failed to import time entry for issue $($entry.issue_id)"
-    } else {
-        Write-Host "Successfully imported time entry for issue $($entry.issue_id)"
-    }
-}
+# 从 XML 文件读取用户名和加密的密码
+[xml]$xml = Get-Content $xmlFile
+$username = $xml.Credentials.Username
+$encryptedPassword = $xml.Credentials.Password
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redmine Time Entry Importer</title>
-</head>
-<body>
-    <h1>Import Time Entries to Redmine</h1>
-    <input type="file" id="csvFileInput" accept=".csv" />
-    <button onclick="importTimeEntries()">Import</button>
+# 将加密的密码转换为 SecureString
+$securePassword = ConvertTo-SecureString $encryptedPassword
 
-    <script src="importer.js"></script>
-</body>
-</html>
-function importTimeEntries() {
-    const fileInput = document.getElementById('csvFileInput');
-    if (!fileInput.files.length) {
-        alert('Please select a CSV file.');
-        return;
-    }
-
-    const file = fileInput.files[0];
-    const reader = new FileReader();
-
-    reader.onload = function(event) {
-        const csvData = event.target.result;
-        const rows = csvData.split('\n');
-
-        const headers = rows[0].split(',');
-
-        for (let i = 1; i < rows.length; i++) {
-            const row = rows[i].split(',');
-            const timeEntry = {};
-
-            for (let j = 0; j < headers.length; j++) {
-                timeEntry[headers[j].trim()] = row[j].trim();
-            }
-
-            sendTimeEntryToRedmine(timeEntry);
-        }
-    };
-
-    reader.readAsText(file);
-}
-
-function sendTimeEntryToRedmine(timeEntry) {
-    const apiUrl = 'http://your-redmine-instance.com/time_entries.json';
-    const apiKey = 'your_api_key';
-
-    const payload = {
-        time_entry: {
-            issue_id: timeEntry.issue_id,
-            hours: timeEntry.hours,
-            activity_id: timeEntry.activity_id,
-            spent_on: timeEntry.spent_on,
-            comments: timeEntry.comments,
-        }
-    };
-
-    fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Redmine-API-Key': apiKey
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(response => {
-        if (response.ok) {
-            console.log(`Successfully imported time entry for issue ${timeEntry.issue_id}`);
-        } else {
-            response.text().then(text => {
-                console.error(`Failed to import time entry for issue ${timeEntry.issue_id}: ${text}`);
-            });
-        }
-    })
-    .catch(error => {
-        console.error(`Error importing time entry for issue ${timeEntry.issue_id}:`, error);
-    });
-}
-
-
+# 将 SecureString 转换回明文密码
+$password2 = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword))
+Write-Host $password2
