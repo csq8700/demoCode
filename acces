@@ -1,61 +1,47 @@
-Sub MergeAndHandleDuplicates()
-    Dim db As DAO.Database
-    Dim rs As DAO.Recordset
-    Dim fldPath As String
-    Dim fld As Object
-    Dim fileName As String
-    Dim sql As String
-    Dim specifiedField As String
-    Dim userChoice As Integer
-    
-    ' 文件夹路径（存放CSV文件）
-    fldPath = "C:\YourFolderPath\"
-    
-    ' 指定字段名称
-    specifiedField = "YourFieldName"
-    
-    ' 创建一个临时表
-    Set db = CurrentDb
-    On Error Resume Next
-    db.Execute "DROP TABLE TempTable"
-    On Error GoTo 0
-    sql = "CREATE TABLE TempTable (ID AUTOINCREMENT, YourFieldName TEXT, OtherField TEXT)"
-    db.Execute sql
-    
-    ' 遍历文件夹中的CSV文件
-    Set fld = CreateObject("Scripting.FileSystemObject").GetFolder(fldPath)
-    For Each fileName In fld.Files
-        If Right(fileName.Name, 4) = ".csv" Then
-            DoCmd.TransferText acImportDelim, , "TempTable", fldPath & fileName.Name, True
+Public Class About
+    Inherits Page
+
+    Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
+        If Not IsPostBack Then
+            ' 检查是否存在名为 "redirected" 的 Cookie
+            Dim redirectedCookie As HttpCookie = Request.Cookies("redirected")
+
+            If redirectedCookie Is Nothing Then
+                ' 如果 Cookie 不存在，表示第一次访问，清除当前会话
+                Session.Abandon()
+
+                ' 清除旧的 SessionID Cookie
+                Response.Cookies.Add(New HttpCookie("__AntiXsrfToken", (Guid.NewGuid().ToString()).Replace("-", "")))
+
+                ' 设置 "redirected" Cookie，标记已重定向
+                Dim cookie As New HttpCookie("redirected", "true")
+                cookie.Expires = DateTime.Now.AddMinutes(10) ' 设置过期时间为10分钟
+                Response.Cookies.Add(cookie)
+
+                ' 重定向到当前页面（确保新会话创建）
+                Response.Redirect(Request.RawUrl)
+            End If
         End If
-    Next
-    
-    ' 查找重复数据
-    sql = "SELECT " & specifiedField & ", Count(*) AS RepeatCount FROM TempTable " & _
-          "GROUP BY " & specifiedField & " HAVING Count(*) > 1"
-    Set rs = db.OpenRecordset(sql)
-    
-    ' 检查是否有重复数据
-    If rs.EOF Then
-        MsgBox "没有重复数据。"
-    Else
-        ' 提示用户选择
-        userChoice = MsgBox("检测到重复数据，是否删除重复部分？" & vbCrLf & _
-                            "是：删除重复部分" & vbCrLf & "否：仅提示重复数据", vbYesNo + vbQuestion)
-        If userChoice = vbYes Then
-            ' 删除重复数据，保留第一条
-            sql = "DELETE FROM TempTable WHERE ID NOT IN (" & _
-                  "SELECT Min(ID) FROM TempTable GROUP BY " & specifiedField & ")"
-            db.Execute sql
-            MsgBox "重复数据已删除。"
-        Else
-            ' 显示重复数据
-            DoCmd.OpenQuery "Query_Duplicates"
-        End If
-    End If
-    
-    ' 清理资源
-    rs.Close
-    Set rs = Nothing
-    Set db = Nothing
-End Sub
+
+    End Sub
+
+    Protected Sub login_Click(sender As Object, e As EventArgs)
+        ' 销毁当前会话
+        'Session.Abandon()
+
+        '' 清除旧的 Session Cookie
+        'Response.Cookies.Add(New HttpCookie("__AntiXsrfToken", ""))
+
+        ' 创建新会话
+        CreateNewSession("test1234")
+
+        ' 跳转到欢迎页面
+        Response.Redirect("Contact.aspx")
+    End Sub
+
+    Private Sub CreateNewSession(ByVal username As String)
+        ' 手动发起一个新的会话
+        Response.Cookies.Add(New HttpCookie("__AntiXsrfToken", (Guid.NewGuid().ToString()).Replace("-", ""))) ' 强制触发新的会话创建
+        Session("userid") = username ' 存储用户 ID 到新的 Session
+    End Sub
+End Class
