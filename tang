@@ -1,0 +1,41 @@
+using System;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Threading.Tasks;
+using Windows.Security.Cryptography;
+using Windows.Security.Cryptography.DataProtection;
+using Windows.Storage.Streams;
+
+class Program
+{
+    static async Task Main()
+    {
+        string plaintext = "My Secret Data";
+        string certThumbprint = "YOUR_CERT_THUMBPRINT"; // 证书指纹
+
+        // 加密数据
+        byte[] encryptedData = await ProtectAsync(plaintext, $"CERTIFICATE=HashId:{certThumbprint}");
+        Console.WriteLine("加密后的数据: " + Convert.ToBase64String(encryptedData));
+
+        // 解密数据
+        string decryptedText = await UnprotectAsync(encryptedData);
+        Console.WriteLine("解密后的数据: " + decryptedText);
+    }
+
+    static async Task<byte[]> ProtectAsync(string data, string descriptor)
+    {
+        DataProtectionProvider provider = new DataProtectionProvider(descriptor);
+        IBuffer buffer = CryptographicBuffer.ConvertStringToBinary(data, BinaryStringEncoding.Utf8);
+        IBuffer encrypted = await provider.ProtectAsync(buffer);
+        CryptographicBuffer.CopyToByteArray(encrypted, out byte[] result);
+        return result;
+    }
+
+    static async Task<string> UnprotectAsync(byte[] encryptedData)
+    {
+        DataProtectionProvider provider = new DataProtectionProvider();
+        IBuffer buffer = CryptographicBuffer.CreateFromByteArray(encryptedData);
+        IBuffer decrypted = await provider.UnprotectAsync(buffer);
+        return CryptographicBuffer.ConvertBinaryToString(BinaryStringEncoding.Utf8, decrypted);
+    }
+}
