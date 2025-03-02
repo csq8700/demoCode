@@ -1,9 +1,9 @@
-﻿using System.Security.Cryptography;
+﻿using System.Runtime.ConstrainedExecution;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Security.Cryptography.X509Certificates;
 
-namespace WinFormsApp1
+namespace WebApplication1.Services
 {
     public class RSAEncryptor
     {
@@ -42,43 +42,35 @@ namespace WinFormsApp1
                 {
                     return certs[0];
                 }
+                else
+                {
+                    throw new CryptographicException("未找到指定名称的证书！");
+                }
             }
-
-            return null;
         }
 
 
         public static string EncryptData(string data)
         {
             X509Certificate2 cert = CreateX509("RSATESTCert");
-            using (RSA rsa = cert.GetRSAPublicKey())
+            using (RSA rsa = cert.GetRSAPublicKey() ?? throw new InvalidOperationException("证书不包含 RSA 公钥！"))
             {
-                // 将字符串转换为字节数组
                 byte[] dataBytes = Encoding.UTF8.GetBytes(data);
-
-                // 使用 RSA 公钥加密数据
                 byte[] encryptedData = rsa.Encrypt(dataBytes, RSAEncryptionPadding.OaepSHA256);
-
                 return Convert.ToBase64String(encryptedData);
             }
         }
 
         public static string DecryptData(string encryptedText)
-                {
+        {
             X509Certificate2 cert = CreateX509("RSATESTCert");
-            using (RSA rsa = cert.GetRSAPrivateKey())
-                    {
+            using (RSA rsa = cert.GetRSAPrivateKey() ?? throw new InvalidOperationException("证书不包含 RSA 私钥！"))
+            {
                 // 使用 RSA 私钥解密数据
                 //byte[] encryptedData = Convert.FromBase64String(encryptedText);
                 byte[] decryptedData = rsa.Decrypt(Convert.FromBase64String(encryptedText), RSAEncryptionPadding.OaepSHA256);
                 return Encoding.UTF8.GetString(decryptedData);
-                //byte[] decryptedData = rsa.Decrypt(encryptedData, RSAEncryptionPadding.OaepSHA256);
-
-                //        // 将字节数组转换为字符串
-                //        string decryptedText = Encoding.UTF8.GetString(decryptedData);
-
-                //        return decryptedText;
-                    }
-                }
             }
+        }
+    }
 }
