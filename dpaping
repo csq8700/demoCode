@@ -1,0 +1,42 @@
+using System;
+using System.Security.Cryptography;
+using System.Text;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        string originalText = "This is a secret message for the group!";
+        string groupSid = "S-1-5-21-3623811015-3361044348-30300820-1013"; // 替换为目标用户组的 SID
+        string protectionDescriptor = $"SID={groupSid}"; // 使用用户组的 SID 作为保护描述符
+
+        // 加密
+        byte[] encryptedData = EncryptWithDpapiNg(originalText, protectionDescriptor);
+        Console.WriteLine("Encrypted: " + Convert.ToBase64String(encryptedData));
+
+        // 解密
+        string decryptedText = DecryptWithDpapiNg(encryptedData);
+        Console.WriteLine("Decrypted: " + decryptedText);
+    }
+
+    static byte[] EncryptWithDpapiNg(string plainText, string protectionDescriptor)
+    {
+        byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+
+        // 使用 DPAPI-NG 加密
+        using (var dpapiNg = new ProtectedDataProtector(protectionDescriptor))
+        {
+            return dpapiNg.Protect(plainBytes);
+        }
+    }
+
+    static string DecryptWithDpapiNg(byte[] encryptedData)
+    {
+        // 使用 DPAPI-NG 解密
+        using (var dpapiNg = new ProtectedDataProtector())
+        {
+            byte[] decryptedBytes = dpapiNg.Unprotect(encryptedData);
+            return Encoding.UTF8.GetString(decryptedBytes);
+        }
+    }
+}
