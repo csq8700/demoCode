@@ -1,0 +1,285 @@
+function Get-XmlNodeToHashtable {
+    <#
+    .SYNOPSIS
+        将XML节点及其所有子节点转换为哈希表
+    
+    .DESCRIPTION
+        递归遍历XML节点，将节点名称和值转换为哈希表，支持多重嵌套
+    
+    .PARAMETER XmlNode
+        要处理的XML节点对象
+    
+    .PARAMETER IncludeAttributes
+        是否包含节点的属性（默认为false）
+    
+    .PARAMETER Prefix
+        键名前缀（用于递归调用）
+    
+    .EXAMPLE
+        $xml = [xml](Get-Content "config.xml")
+        $result = Get-XmlNodeToHashtable -XmlNode $xml.DocumentElement
+        
+    .EXAMPLE
+        $xml = [xml]"<root><person><name>John</name><age>30</age></person></root>"
+        $result = Get-XmlNodeToHashtable -XmlNode $xml.root
+    #>
+    
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Xml.XmlNode]$XmlNode,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$IncludeAttributes = $false,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Prefix = ""
+    )
+    
+    $result = @{}
+    
+    # 处理当前节点的属性
+    if ($IncludeAttributes -and $XmlNode.Attributes.Count -gt 0) {
+        foreach ($attr in $XmlNode.Attributes) {
+            $key = if ($Prefix) { "${Prefix}.@$($attr.Name)" } else { "@$($attr.Name)" }
+            $result[$key] = $attr.Value
+        }
+    }
+    
+    # 处理子节点
+    foreach ($childNode in $XmlNode.ChildNodes) {
+        switch ($childNode.NodeType) {
+            "Element" {
+                # 构建当前节点的键名
+                $currentKey = if ($Prefix) { "${Prefix}.$($childNode.Name)" } else { $childNode.Name }
+                
+                # 检查是否有多个同名的兄弟节点
+                $siblingCount = ($XmlNode.ChildNodes | Where-Object { 
+                    $_.NodeType -eq "Element" -and $_.Name -eq $childNode.Name 
+                }).Count
+                
+                # 如果有多个同名节点，则创建数组
+                if ($siblingCount -gt 1) {
+                    if (-not $result.ContainsKey($childNode.Name)) {
+                        $result[$childNode.Name] = @()
+                    }
+                    
+                    # 递归处理子节点
+                    if ($childNode.HasChildNodes -and 
+                        ($childNode.ChildNodes.Count -gt 1 -or 
+                         ($childNode.ChildNodes.Count -eq 1 -and $childNode.FirstChild.NodeType -ne "Text"))) {
+                        # 子节点还有子节点，递归处理
+                        $childResult = Get-XmlNodeToHashtable -XmlNode $childNode `
+                            -IncludeAttributes:$IncludeAttributes `
+                            -Prefix ""
+                        $result[$childNode.Name] += $childResult
+                    } else {
+                        # 只有文本内容
+                        $result[$childNode.Name] += $childNode.InnerText
+                    }
+                } else {
+                    # 只有一个同名节点
+                    if ($childNode.HasChildNodes -and 
+                        ($childNode.ChildNodes.Count -gt 1 -or 
+                         ($childNode.ChildNodes.Count -eq 1 -and $childNode.FirstChild.NodeType -ne "Text"))) {
+                        # 递归处理子节点
+                        $childResult = Get-XmlNodeToHashtable -XmlNode $childNode `
+                            -IncludeAttributes:$IncludeAttributes `
+                            -Prefix $currentKey
+                        # 合并结果到当前哈希表
+                        foreach ($key in $childResult.Keys) {
+                            $result[$key] = $childResult[$key]
+                        }
+                    } else {
+                        # 只有文本内容
+                        $result[$currentKey] = $childNode.InnerText
+                    }
+                }
+            }
+            
+            "Text" {
+                # 如果有文本内容且不是空白字符
+                if ($childNode.Value.Trim() -ne "") {
+                    $key = if ($Prefix) { "${Prefix}.$($XmlNode.Name)" } else { $XmlNode.Name }
+                    $result[$key] = $childNode.Value
+                }
+            }
+            
+            "CDATA" {
+                $key = if ($Prefix) { "${Prefix}.$($XmlNode.Name)" } else { $XmlNode.Name }
+                $result[$key] = $childNode.Value
+            }
+        }
+    }
+    
+    # 如果没有子元素节点但有文本内容，添加文本值
+    if ($result.Count -eq 0 -and $XmlNode.InnerText.Trim() -ne "") {
+        $key = if ($Prefix) { $Prefix } else { $XmlNode.Name }
+        $result[$key] = $XmlNode.InnerText
+    }
+    
+    return $result
+}
+
+function ConvertFrom-Xml {
+    <#
+    .SYNOPSIS
+        将XML文档或节点转换为哈希表
+    
+    .DESCRIPTION
+        将整个XML文档或指定节点转换为哈希表
+    
+    .PARAMETER XmlContent
+        XML字符串或XmlDocument对象
+    
+    .PARAMETER XPath
+        要选择的节点XPath表达式（可选）
+    
+    .PARAMETER IncludeAttributes
+        是否包含属性
+    
+    .EXAMPLE
+        $xmlString = @"
+        <root>
+            <person>
+                <name>John</name>
+                <age>30</age>
+                <address>
+                    <street>Main St</street>
+                    <city>New York</city>
+                </address>
+            </person>
+            <person>
+                <name>Jane</name>
+                <age>25</age>
+            </person>
+        </root>
+        "@
+        
+        $result = ConvertFrom-Xml -XmlContent $xmlString
+        $result | Format-List
+    
+    .EXAMPLE
+        $xml = [xml](Get-Content "data.xml")
+        $result = ConvertFrom-Xml -XmlContent $xml -XPath "//person"
+    #>
+    
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$XmlContent,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$XPath,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$IncludeAttributes = $false
+    )
+    
+    # 将输入转换为XmlDocument
+    if ($XmlContent -is [string]) {
+        $xmlDoc = [xml]$XmlContent
+    } elseif ($XmlContent -is [xml]) {
+        $xmlDoc = $XmlContent
+    } else {
+        throw "输入必须是XML字符串或XmlDocument对象"
+    }
+    
+    # 选择要处理的节点
+    if ($XPath) {
+        $nodes = $xmlDoc.SelectNodes($XPath)
+        if ($nodes.Count -eq 0) {
+            Write-Warning "未找到匹配的节点: $XPath"
+            return @{}
+        }
+        
+        if ($nodes.Count -gt 1) {
+            # 多个节点，返回数组
+            $results = @()
+            foreach ($node in $nodes) {
+                $results += Get-XmlNodeToHashtable -XmlNode $node `
+                    -IncludeAttributes:$IncludeAttributes `
+                    -Prefix ""
+            }
+            return $results
+        } else {
+            # 单个节点
+            $node = $nodes[0]
+        }
+    } else {
+        $node = $xmlDoc.DocumentElement
+    }
+    
+    # 转换节点为哈希表
+    return Get-XmlNodeToHashtable -XmlNode $node `
+        -IncludeAttributes:$IncludeAttributes `
+        -Prefix ""
+}
+
+# 使用示例
+function Show-Example {
+    # 示例1: 简单XML
+    $simpleXml = @"
+<config>
+    <database>
+        <server>localhost</server>
+        <port>1433</port>
+        <credentials>
+            <username>admin</username>
+            <password>secret</password>
+        </credentials>
+    </database>
+</config>
+"@
+
+    Write-Host "示例1: 简单嵌套XML" -ForegroundColor Green
+    $result1 = ConvertFrom-Xml -XmlContent $simpleXml
+    $result1 | ConvertTo-Json -Depth 10
+
+    # 示例2: 包含多个相同元素和属性的XML
+    $complexXml = @"
+<books>
+    <book id="1" category="fiction">
+        <title>PowerShell Guide</title>
+        <author>John Doe</author>
+        <chapters>
+            <chapter>Introduction</chapter>
+            <chapter>Basics</chapter>
+            <chapter>Advanced</chapter>
+        </chapters>
+    </book>
+    <book id="2" category="non-fiction">
+        <title>XML Mastery</title>
+        <author>Jane Smith</author>
+    </book>
+</books>
+"@
+
+    Write-Host "`n示例2: 复杂XML（包含属性和数组）" -ForegroundColor Green
+    $result2 = ConvertFrom-Xml -XmlContent $complexXml -IncludeAttributes
+    $result2 | ConvertTo-Json -Depth 10
+
+    # 示例3: 从文件读取
+    Write-Host "`n示例3: 从文件读取XML" -ForegroundColor Green
+    # 创建临时XML文件
+    $tempFile = [System.IO.Path]::GetTempFileName() + ".xml"
+    $complexXml | Out-File -FilePath $tempFile -Encoding UTF8
+    
+    try {
+        $xmlFromFile = [xml](Get-Content $tempFile)
+        $result3 = ConvertFrom-Xml -XmlContent $xmlFromFile
+        $result3 | ConvertTo-Json -Depth 10
+    }
+    finally {
+        Remove-Item $tempFile -ErrorAction SilentlyContinue
+    }
+    
+    # 示例4: 使用XPath选择特定节点
+    Write-Host "`n示例4: 使用XPath选择节点" -ForegroundColor Green
+    $result4 = ConvertFrom-Xml -XmlContent $complexXml -XPath "//book" -IncludeAttributes
+    $result4 | ConvertTo-Json -Depth 10
+}
+
+# 运行示例
+Show-Example
+
+# 导出的函数
+Export-ModuleMember -Function Get-XmlNodeToHashtable, ConvertFrom-Xml
